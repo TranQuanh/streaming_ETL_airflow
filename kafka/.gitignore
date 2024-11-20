@@ -1,0 +1,6 @@
+config/kafka
+
+project/.env
+project/__pycache__/
+
+my_venv/

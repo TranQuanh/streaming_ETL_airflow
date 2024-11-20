@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  postgres1:
+    image: "postgres:16.3"
+    networks:
+      - streaming-network
+    hostname: "postgres1"
+    container_name: "postgres-container-1"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "UnigapPostgres@123"
+      POSTGRES_DB: "postgres"
+      PGDATA: "/var/lib/postgresql/data"
+    ports:
+      - "5432:5432"
+
+  adminer:
+    image: "adminer:latest"
+    networks:
+      - streaming-network
+    hostname: adminer
+    container_name: adminer
+    ports:
+      - "8380:8080"
+
+
+networks:
+  streaming-network:
+    external: true
+
+volumes:
+  postgres_data:
+    driver: local
