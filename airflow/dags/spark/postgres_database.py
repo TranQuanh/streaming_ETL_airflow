@@ -1,7 +1,7 @@
 import psycopg2
 
 DB_CONFIG = {
-    'host': 'postgres',
+    'host': 'postgres1',
     'port': 5432,
     'database': 'postgres',
     'user': 'postgres',
@@ -65,7 +65,7 @@ def insert_to_dim_date(df_date):
     df_date.write \
         .format("jdbc") \
         .option("driver", "org.postgresql.Driver") \
-        .option("url", "jdbc:postgresql://postgres:5432/postgres") \
+        .option("url", "jdbc:postgresql://postgres1:5432/postgres") \
         .option("dbtable", "dim_date") \
         .option("user", "postgres") \
         .option("password", "UnigapPostgres@123") \
@@ -75,7 +75,7 @@ def insert_to_dim_territory(df_territory):
     df_territory.write \
         .format("jdbc") \
         .option("driver", "org.postgresql.Driver") \
-        .option("url", "jdbc:postgresql://postgres:5432/postgres") \
+        .option("url", "jdbc:postgresql://postgres1:5432/postgres") \
         .option("dbtable", "dim_territory") \
         .option("user", "postgres") \
         .option("password", "UnigapPostgres@123") \
@@ -85,7 +85,7 @@ def insert_to_dim_product(df_product):
     df_product.write \
         .format("jdbc") \
         .option("driver", "org.postgresql.Driver") \
-        .option("url", "jdbc:postgresql://postgres:5432/postgres") \
+        .option("url", "jdbc:postgresql://postgres1:5432/postgres") \
         .option("dbtable", "dim_product") \
         .option("user", "postgres") \
         .option("password", "UnigapPostgres@123") \

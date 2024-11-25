@@ -90,6 +90,22 @@ def normalize(df):
 
 def process_batch(batch_df):
     # generate territory_id
+    email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    date_regex = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
+    ip_regex = r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
+    df_with_flags = batch_df.withColumn(
+    "is_valid",
+    when(
+        (col("email").rlike(email_regex)) & 
+        (col("product_id").isNotNull()) & 
+        (col("date").rlike(date_regex)) & 
+        (col("ip").rlike(ip_regex)),
+        "valid"
+    ).otherwise("invalid")
+)
+    # Phân loại DataFrame
+    valid_df = df_with_flags.filter(col("is_valid") == "valid").drop("is_valid")
+    invalid_df = df_with_flags.filter(col("is_valid") == "invalid").drop("is_valid")
     tmp_df =  batch_df
     current_domain =  split(col('current_url'),'/')[2]
     domain_size = size(split(current_domain,r"\."))

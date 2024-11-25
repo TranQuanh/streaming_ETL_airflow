@@ -1,4 +1,4 @@
-# pyspark==3.5.1
+pyspark
 venv-pack
 pyyaml
 ua-parser

@@ -5,3 +5,4 @@ RUN mkdir -p /opt/bitnami/spark/.ivy2 && chown -R 1001:root /opt/bitnami/spark/.
 USER 1001
 VOLUME /data
 VOLUME /opt/bitnami/spark/.ivy2
+RUN pip install pyspark confluent_kafka venv-pack pyyaml ua-parser user-agents psycopg2-binary
