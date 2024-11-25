@@ -34,7 +34,12 @@ def process_partition(columns,insert_query,partition):
         if conn:
             cursor.close()
             conn.close()
-
+def update_to_invalid_df(invalid_df):
+    columns = ['time_stamp','ip','user_agent','store_id','local_time','current_url','referrer_url','product_id']
+    column_names = ",".join(columns)
+    placeholders = ','.join(['%s']*len(columns))
+    insert_query = f"INSERT INTO invalid_table ({column_names}) VALUES ({placeholders})"
+    invalid_df.foreachPartition(lambda partition:process_partition(columns,insert_query,partition))
 def upsert_to_dim_browser(df_browser):
     columns = ['browser_id','browser_name']
     column_names = ",".join(columns)
@@ -152,6 +157,16 @@ def create_table():
         FOREIGN KEY (date_id) REFERENCES Dim_Date(date_id),
         FOREIGN KEY (os_id) REFERENCES Dim_Os(os_id),
         FOREIGN KEY (browser_id) REFERENCES Dim_Browser(browser_id)
+    );
+    DROP TABLE IF EXISTS invalid_table ;
+    CREATE TABLE invalid_table(
+        time_stamp BIGINT ,
+        ip VARCHAR(250),
+        user_agent VARCHAR(250),
+        store_id INT,
+        current_url VARCHAR(250),
+        referrer_url VARCHAR(250),
+        product_id INT
     );
     '''
     # Sử dụng self.cur và self.conn thay vì cur và conn

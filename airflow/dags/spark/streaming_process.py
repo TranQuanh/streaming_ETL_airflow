@@ -83,7 +83,7 @@ def normalize(df):
                                "data.local_time",  
                                "data.current_url", 
                                "data.referrer_url",   
-                               "data.product_id", 
+                               "data.product_id"
                                )
     return df_final
 
@@ -96,9 +96,8 @@ def process_batch(batch_df):
     df_with_flags = batch_df.withColumn(
     "is_valid",
     when(
-        (col("email").rlike(email_regex)) & 
         (col("product_id").isNotNull()) & 
-        (col("date").rlike(date_regex)) & 
+        (col("local_time").rlike(date_regex)) & 
         (col("ip").rlike(ip_regex)),
         "valid"
     ).otherwise("invalid")
@@ -106,14 +105,24 @@ def process_batch(batch_df):
     # Phân loại DataFrame
     valid_df = df_with_flags.filter(col("is_valid") == "valid").drop("is_valid")
     invalid_df = df_with_flags.filter(col("is_valid") == "invalid").drop("is_valid")
-    tmp_df =  batch_df
+    # invalid_df = invalid_df\
+    #             .select(
+    #                     "time_stamp",
+    #                     "ip",
+    #                     "user_agent",
+    #                     "store_id",
+    #                     "local_time",
+    #                     "current_url",
+    #                     "referrer_url",
+    #                     "product_id"
+    #                     )
     current_domain =  split(col('current_url'),'/')[2]
     domain_size = size(split(current_domain,r"\."))
     country_code = (split(current_domain,r"\.").getItem(domain_size-1))
     dim_territory_id = abs(hash(country_code))
-    tmp_df = tmp_df\
+    valid_df = valid_df\
     .withColumn("tmp_territory_id",dim_territory_id)
-    behaviour_df = tmp_df.join(dim_territory,tmp_df["tmp_territory_id"]==dim_territory["territory_id"],'left')
+    behaviour_df = valid_df.join(dim_territory,valid_df["tmp_territory_id"]==dim_territory["territory_id"],'left')
     # territory_id_handle_null
     gen_territory_id = when(col('territory_id').isNull(),-1).otherwise(col('territory_id'))
 
@@ -186,7 +195,11 @@ def process_batch(batch_df):
     # df_dim_os.show()
 
     # load into database
+    print("dataframe fact_view:")
     df_fact_view.show()
+    print("dataframe invalid_df:")
+    invalid_df.show()
+    db_ops.update_to_invalid_df(invalid_df)
     db_ops.upsert_to_dim_browser(df_dim_browser)
     db_ops.upsert_to_dim_os(df_dim_os)
     db_ops.upsert_to_fact_vew(df_fact_view)
