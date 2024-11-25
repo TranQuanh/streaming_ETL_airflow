@@ -9,6 +9,8 @@ services:
       - spark_data:/data
     environment:
       - SPARK_MODE=master
+      - HADOOP_CONF_DIR=/etc/hadoop/conf
+      - YARN_CONF_DIR=/etc/hadoop/conf
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
@@ -27,6 +29,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark:7077
+      - HADOOP_CONF_DIR=/etc/hadoop/conf
+      - YARN_CONF_DIR=/etc/hadoop/conf
       - SPARK_WORKER_MEMORY=2G
       - SPARK_WORKER_CORES=1
       - SPARK_RPC_AUTHENTICATION_ENABLED=no

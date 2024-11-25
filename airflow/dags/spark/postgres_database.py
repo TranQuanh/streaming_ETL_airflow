@@ -164,6 +164,7 @@ def create_table():
         ip VARCHAR(250),
         user_agent VARCHAR(250),
         store_id INT,
+        local_time TIMESTAMP,
         current_url VARCHAR(250),
         referrer_url VARCHAR(250),
         product_id INT
