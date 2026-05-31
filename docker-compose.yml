@@ -1,0 +1,196 @@
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:2.9.1
+  networks:
+    - streaming-network_bi
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:123@postgres-airflow/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: 10
+    # Giữ lại clickhouse-driver để Airflow làm task Quality Check (kiểm tra data trong ClickHouse)
+    _PIP_ADDITIONAL_REQUIREMENTS: 'apache-airflow-providers-postgres psycopg2-binary clickhouse-driver'
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  # Thêm dòng này để Airflow trong Docker có thể "gọi" được Spark đang chạy ở ngoài máy Local của bạn
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    postgres-airflow:
+      condition: service_healthy
+
+services:
+  # ==========================================
+  # 1. SOURCE: MONGODB
+  # ==========================================
+  mongodb:
+    image: "mongo:7.0"
+    hostname: mongodb
+    container_name: mongodb_BI
+    networks:
+      - streaming-network_bi
+    volumes:
+      - ./mongodb/data:/data/db
+      - "/media/quanh/New Volume1/Worker/project_glamira/glamira_ubl_oct2019_nov2019/dump/countly:/glamira_dump"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "admin"
+      MONGO_INITDB_ROOT_PASSWORD: "123"
+    ports:
+      - "27017:27017" # Spark Local sẽ kết nối vào Mongo qua cổng này (localhost:27017)
+    restart: always
+
+  mongo-express:
+    image: "mongo-express:1.0.2"
+    hostname: mongo-express
+    container_name: mongo-express_BI
+    networks:
+      - streaming-network_bi
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: "admin"
+      ME_CONFIG_MONGODB_ADMINPASSWORD: "123"
+      ME_CONFIG_MONGODB_URL: "mongodb://admin:123@mongodb:27017/"
+      ME_CONFIG_BASICAUTH_USERNAME: "admin"
+      ME_CONFIG_BASICAUTH_PASSWORD: "admin"
+    depends_on:
+      - mongodb
+    restart: always
+
+  # ==========================================
+  # 2. DATA WAREHOUSE: CLICKHOUSE
+  # ==========================================
+  clickhouse:
+    image: "clickhouse/clickhouse-server:24.3"
+    hostname: clickhouse
+    container_name: clickhouse_BI
+    networks:
+      - streaming-network_bi
+    volumes:
+      - ./clickhouse/data:/var/lib/clickhouse
+      - ./clickhouse/logs:/var/log/var/log/clickhouse-server
+      - ./clickhouse/config:/etc/clickhouse-server/config.d
+    environment:
+      CLICKHOUSE_USER: "admin"
+      CLICKHOUSE_PASSWORD: "123"
+      CLICKHOUSE_DB: "glamira_dw"
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"   # HTTP (Dùng cho Metabase, Grafana và Spark qua HTTP)
+      - "9000:9000"   # Native wire protocol (Spark Local sẽ ghi data vào cổng này cực nhanh)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 3. BI TOOL: METABASE
+  # ==========================================
+  metabase:
+    image: "metabase/metabase:latest"
+    hostname: metabase
+    container_name: metabase_BI
+    networks:
+      - streaming-network_bi
+    volumes:
+      - ./metabase/data:/metabase-data
+    environment:
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+    ports:
+      - "3000:3000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: always
+
+  # ==========================================
+  # 4. MONITORING: GRAFANA
+  # ==========================================
+  grafana:
+    image: "grafana/grafana:10.4.0"
+    hostname: grafana
+    container_name: grafana_BI
+    networks:
+      - streaming-network_bi
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "123"
+      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
+    ports:
+      - "3001:3000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: always
+
+  # ==========================================
+  # 5. ORCHESTRATION: AIRFLOW
+  # ==========================================
+  postgres-airflow:
+    image: postgres:13
+    hostname: "postgres-airflow"
+    container_name: postgres-airflow_BI
+    networks:
+      - streaming-network_bi
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: "123"
+      POSTGRES_DB: airflow
+    volumes:
+      - ./airflow/postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver_BI
+    command: webserver
+    ports:
+      - "8090:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler_BI
+    command: scheduler
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init_BI
+    command: airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
+
+networks:
+  streaming-network_bi:
+    driver: bridge

@@ -1,0 +1,17 @@
+# Khóa chính của Docker Data - BỎ QUA TOÀN BỘ DATA THÔ
+clickhouse/data/
+clickhouse/logs/
+grafana/data/
+mongodb/data/
+postgres_dw/data/
+airflow/postgres_data/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Môi trường ảo (nếu có)
+.venv/
+venv/
+env/
