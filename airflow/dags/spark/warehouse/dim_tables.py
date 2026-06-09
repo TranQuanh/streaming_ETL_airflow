@@ -5,7 +5,7 @@ from pyspark.sql.types import StringType, LongType, IntegerType, DoubleType
 from pyspark.sql.functions import (
     col, split, size, abs as spark_abs, hash as spark_hash,
     date_format, dayofmonth, month, year, hour,
-    udf, trim, when, lit, explode, from_json
+    udf, trim, when, lit, explode, from_json, regexp_replace
 )
 from pyspark.sql.types import ArrayType, StructType, StructField
 from ua_parser import user_agent_parser
@@ -351,73 +351,100 @@ def build_dim_material(spark):
 def build_dim_currency(spark):
     print("[DIM_CURRENCY] Khởi tạo danh sách tỷ giá currency...")
     
-    # 1. Đọc dữ liệu từ stg_events để lấy danh sách currency phát sinh thực tế
     stg_events = read_ch(spark, "stg_events")
     
     raw_currency = (
         stg_events
         .filter(col("currency").isNotNull())
-        .withColumn("currency_clean", trim(col("currency")))
+        .withColumn("currency_clean", trim(regexp_replace(col("currency"), r"[\u00a0\s]+", " ")))
         .filter(col("currency_clean") != "")
         .select("currency_clean")
         .distinct()
     )
     
-    # 2. Ánh xạ tỷ giá usd_conversion_rate dựa trên bộ luật CASE WHEN tổng hợp của bạn
     dim_currency = (
         raw_currency
         .withColumn("currency_id", spark_abs(spark_hash(col("currency_clean"))).cast(LongType()))
         .withColumn("usd_conversion_rate",
-            when(col("currency_clean") == "CHF", lit(1.04))
-            .when(col("currency_clean") == "CAD $", lit(0.75))
-            .when(col("currency_clean") == "加币$", lit(0.75))
-            .when(col("currency_clean") == "加元", lit(0.75))
-            .when(col("currency_clean") == "zł", lit(0.25))
-            .when(col("currency_clean") == "CLP", lit(0.0013))
-            .when(col("currency_clean") == "CRC ₡", lit(0.0018))
-            .when(col("currency_clean") == "NZD $", lit(0.61))
-            .when(col("currency_clean") == "Lei", lit(0.23))
-            .when(col("currency_clean") == "лв.", lit(0.56))
-            .when(col("currency_clean") == "PEN S/.", lit(0.27))
-            .when(col("currency_clean") == "₺", lit(0.11))
-            .when(col("currency_clean") == "GTQ Q", lit(0.13))
-            .when(col("currency_clean") == "₱", lit(0.020))
-            .when(col("currency_clean") == "₫", lit(0.000042))
-            .when(col("currency_clean") == "din.", lit(1.50))
-            .when(col("currency_clean") == "kn", lit(0.16))
-            .when(col("currency_clean") == "HKD $", lit(0.13))
-            .when(col("currency_clean") == "￥", lit(0.0070))
-            .when(col("currency_clean") == "د.ك.‏", lit(3.27))
-            .when(col("currency_clean") == "KWD", lit(3.27))
-            .when(col("currency_clean") == "USD $", lit(1.00))
-            .when(col("currency_clean") == "US $", lit(1.00))
-            .when(col("currency_clean") == "US$", lit(1.00))
-            .when(col("currency_clean") == "$", lit(1.00))
-            .when(col("currency_clean") == "COP $", lit(0.00026))
-            .when(col("currency_clean") == "₹", lit(0.012))
-            .when(col("currency_clean") == "BOB Bs", lit(0.14))
-            .when(col("currency_clean") == "UYU", lit(0.025))
-            .when(col("currency_clean") == "DOP $", lit(0.018))
-            .when(col("currency_clean") == "R$", lit(0.20))
-            .when(col("currency_clean") == "₲", lit(0.00014))
-            .when(col("currency_clean") == "€", lit(1.10))
-            .when(col("currency_clean") == "£", lit(1.25))
-            .when(col("currency_clean") == "kr", lit(0.10))
-            .when(col("currency_clean") == "AU $", lit(0.70))
-            .when(col("currency_clean") == "AUD $", lit(0.70))
-            .when(col("currency_clean") == "SGD $", lit(0.74))
-            .when(col("currency_clean") == "Kč", lit(0.046))
-            .when(col("currency_clean") == "Ft", lit(0.0034))
-            .when(col("currency_clean") == "AED", lit(0.27))
-            .when(col("currency_clean") == "، درهم", lit(0.27))
-            .when(col("currency_clean") == "AZN", lit(0.59))
-            .when(col("currency_clean") == "฿", lit(0.028))
-            .when(col("currency_clean") == "RM", lit(0.21))
-            .when(col("currency_clean") == "ZAR", lit(0.055))
-            .when(col("currency_clean") == "MXN $", lit(0.054))
-            .when(col("currency_clean") == "CHF '", lit(1.04))
-            .when(col("currency_clean") == "швейцарских франka", lit(1.04))
-            .when(col("currency_clean") == "швейцарских франков", lit(1.04))
+            # --- Nhóm EURO (€) ---
+            when(col("currency_clean").isin("€", "EUR", "euro", "евро", "يورو"), lit(1.10))
+            
+            # --- Nhóm USD ($) ---
+            .when(col("currency_clean").isin("$", "USD", "US$", "USD $", "US $", "dolar", "דולר", "$US", "долл США"), lit(1.00))
+            
+            # --- Nhóm Bảng Anh (£) ---
+            .when(col("currency_clean").isin("£", "GBP"), lit(1.24))
+            
+            # --- Nhóm Đô la Úc (AUD) ---
+            .when(col("currency_clean").isin("AU $", "AUD $", "AUD"), lit(0.67))
+            
+            # --- Nhóm Đô la Canada (CAD) ---
+            .when(col("currency_clean").isin("CAD $", "加币$", "加元", "CAD", "$ CAD"), lit(0.75))
+            
+            # --- Nhóm Thụy Sĩ (CHF) ---
+            .when(col("currency_clean").isin("CHF", "CHF '", "швейцарских франka", "швейцарских франков", "швейцарских франка"), lit(1.04))
+            
+            # --- Nhóm Đô la Hồng Kông (HKD) ---
+            .when(col("currency_clean").isin("HKD $", "港币$", "HKD"), lit(0.13))
+            
+            # --- Nhóm Yên Nhật / Nhân Dân Tệ (￥/¥) ---
+            .when(col("currency_clean").isin("￥", "¥", "JPY", "CNY"), lit(0.0070))
+            
+            # --- Nhóm Đô la Đài Loan (TWD) ---
+            .when(col("currency_clean").isin("NT$", "TWD"), lit(0.033))
+            
+            # --- Nhóm Tiền tệ Đông Nam Á ---
+            .when(col("currency_clean").isin("₫", "VND"), lit(0.000042)) 
+            .when(col("currency_clean").isin("฿", "THB"), lit(0.031))   
+            .when(col("currency_clean").isin("RM", "MYR"), lit(0.23))   
+            .when(col("currency_clean").isin("Rp", "IDR"), lit(0.000067)) 
+            .when(col("currency_clean").isin("₱", "PHP"), lit(0.020))   
+            .when(col("currency_clean").isin("SGD $", "SGD"), lit(0.71)) 
+            
+            # --- Nhóm Tiền tệ Châu Âu khác ---
+            .when(col("currency_clean").isin("zł", "PLN", "злотых", "зл"), lit(0.25)) # Ba Lan
+            .when(col("currency_clean").isin("Kč", "CZK"), lit(0.041))   # Séc
+            .when(col("currency_clean").isin("Ft", "HUF"), lit(0.0031))  # Hungary
+            .when(col("currency_clean").isin("Lei", "RON"), lit(0.23))   # Romania
+            .when(col("currency_clean").isin("лв.", "лв", "BGN"), lit(0.56)) # Bulgaria
+            .when(col("currency_clean").isin("din.", "din", "RSD"), lit(0.0094)) # Serbia
+            .when(col("currency_clean").isin("kn", "HRK"), lit(0.15))    # Croatia
+            .when(col("currency_clean").isin("Lekë", "ALL"), lit(0.0091)) # Albania
+            .when(col("currency_clean").isin("kr", "SEK", "瑞典克朗", "шведских крон", "، كرونة"), lit(0.10)) # Thụy Điển
+            .when(col("currency_clean").isin("₴", "UAH"), lit(0.037))    # Ukraina
+            
+            # --- Nhóm Tiền tệ Châu Mỹ ---
+            .when(col("currency_clean").isin("MXN $", "MXN"), lit(0.045)) # Mexico
+            .when(col("currency_clean") == "CLP", lit(0.0013))          # Chile
+            .when(col("currency_clean") == "CRC ₡", lit(0.0018))        # Costa Rica
+            .when(col("currency_clean").isin("PEN S/.", "PEN S/", "PEN S"), lit(0.27)) # Peru
+            .when(col("currency_clean") == "GTQ Q", lit(0.13))          # Guatemala
+            .when(col("currency_clean") == "BOB Bs", lit(0.14))         # Bolivia
+            .when(col("currency_clean") == "UYU", lit(0.023))           # Uruguay
+            .when(col("currency_clean") == "DOP $", lit(0.018))         # CH Dominica
+            .when(col("currency_clean") == "R$", lit(0.19))             # Brazil
+            .when(col("currency_clean") == "₲", lit(0.00015))           # Paraguay
+            .when(col("currency_clean").isin("COP $", "COP"), lit(0.00026)) # Colombia
+            .when(col("currency_clean") == "HNL L", lit(0.040))         # Honduras
+            
+            # --- Nhóm Châu Phi & Trung Đông ---
+            .when(col("currency_clean") == "ZAR", lit(0.056))           # Nam Phi
+            .when(col("currency_clean") == "KMF", lit(0.0022))          # Comoros
+            .when(col("currency_clean").isin("د.ك.‏", "د ك", "KWD"), lit(3.27)) # Kuwait
+            .when(col("currency_clean").isin("AED", "، درهم"), lit(0.27)) # UAE
+            .when(col("currency_clean") == "AZN", lit(0.59))            # Azerbaijan
+            .when(col("currency_clean") == "₺", lit(0.11))              # Thổ Nhĩ Kỳ
+            .when(col("currency_clean") == "AFN", lit(0.013))           # Afghanistan
+            
+            # --- Nhóm Châu Á khác ---
+            .when(col("currency_clean").isin("₩", "KRW"), lit(0.00083)) # Hàn Quốc
+            .when(col("currency_clean").isin("руб.", "RUB"), lit(0.013)) # Nga
+            .when(col("currency_clean").isin("₹", "INR"), lit(0.013))   # Ấn Độ
+            
+            # --- Các trường hợp đặc biệt ---
+            .when(col("currency_clean") == "Ucretsiz", lit(0.00))       # Miễn phí
+            .when(col("currency_clean").isin("NZD $", "NZD"), lit(0.61)) # New Zealand
+            
             .otherwise(lit(None).cast(DoubleType()))
         )
         .select(
@@ -427,7 +454,6 @@ def build_dim_currency(spark):
         )
     )
 
-    # 3. Tạo dòng Unknown phòng rủi ro dữ liệu null/lỗi (-1)
     unknown_row = spark.createDataFrame([
         Row(
             currency_id        = -1,
@@ -446,14 +472,14 @@ def main():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
 
-    write_ch(build_dim_date(spark),      "dim_date")
+    # write_ch(build_dim_date(spark),      "dim_date")
     write_ch(build_dim_territory(spark), "dim_territory")
     # write_ch(build_dim_product(spark),   "dim_product")
-    write_ch(build_dim_device(spark),    "dim_device")
-    write_ch(build_dim_material(spark),  "dim_material")
+    # write_ch(build_dim_device(spark),    "dim_device")
+    # write_ch(build_dim_material(spark),  "dim_material")
 
 
-    write_ch(build_dim_currency(spark),  "dim_currency")
+    # write_ch(build_dim_currency(spark),  "dim_currency")
     spark.stop()
     print("[DONE] Tất cả dim hoàn tất.")
 

@@ -1,93 +1,160 @@
-select cart_products_json, collection from glamira_stg.stg_events where option_json is not null limit 1000
+-- ============================================================================
+-- KHỞI TẠO DATABASE
+-- ============================================================================
+CREATE DATABASE IF NOT EXISTS glamira_dw;
+DROP TABLE IF EXISTS glamira_dw.fact_events;
+DROP TABLE IF EXISTS glamira_dw.fact_order;
+USE glamira_dw;
+TRUNCATE TABLE glamira_dw.dim_territory
+TRUNCATE TABLE glamira_dw.dim_ip
+TRUNCATE TABLE glamira_dw.fact_order
+	select * from glamira_dw.dim_currency
+select * from glamira_dw.fact_events
+select * from glamira_stg.stg_events where event_id = '5e857b5f5d4dd036fab55dc7';
+-- ============================================================================
+-- A. KHỐI BẢNG CHIỀU THÔNG TIN (DIMENSION TABLES)
+-- ============================================================================
 
-DROP TABLE IF EXISTS glamira_dwh.dim_date;
-DROP TABLE IF EXISTS glamira_dwh.dim_territory;
-DROP TABLE IF EXISTS glamira_dwh.dim_product;
-DROP TABLE IF EXISTS glamira_dwh.dim_device;
-CREATE DATABASE IF NOT EXISTS glamira_dwh;
-use glamira_dwh;
--- ------------------------------------------------------------
--- 1. dim_date
--- Sinh từ sequence timestamp, granularity theo giờ
--- date_id = HHddMMyyyy (Long) — unique mỗi giờ
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS glamira_dw.dim_date (
-    date_id           Int64,       -- HHddMMyyyy, PK
-    full_date         DateTime,
-    day_of_week       String,      -- Monday, Tuesday...
-    day_of_week_short String,      -- Mon, Tue...
-    day_of_month      Int32,       -- 1-31
-    month             Int32,       -- 1-12
-    year              Int32,
-    hour              Int32        -- 0-23
+-- 1. Bảng dim_date (Trục Thời gian Phân tích)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_date
+(
+    date_id Int64,
+    full_date DateTime,
+    day_of_week String,
+    day_of_week_short String,
+    day_of_month Int32,
+    month Int32,
+    year Int32,
+    hour Int32
 )
 ENGINE = MergeTree()
-ORDER BY (year, month, day_of_month, hour)
-COMMENT 'Dimension thời gian, granularity theo giờ, range 2020-01-01 đến 2020-12-31';
- 
- 
--- ------------------------------------------------------------
--- 2. dim_territory
--- territory_id = abs(hash(country_code)) từ TLD của current_url
--- Row đặc biệt: territory_id = -1 cho glamira.com và URL lỗi
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS glamira_dw.dim_territory (
-    territory_id        Int64,              -- PK, -1 = unknown/global
-    country_code        String,             -- 'de', 'fr', 'au', 'com'...
-    country_name        Nullable(String),
-    alpha_2             Nullable(String),   -- ISO alpha-2: DE, FR, GB
-    alpha_3             Nullable(String),   -- ISO alpha-3: DEU, FRA, GBR
-    region              Nullable(String),   -- Europe, Asia...
-    sub_region          Nullable(String),
+ORDER BY date_id;
+
+-- 2. Bảng dim_territory (Chiều Không gian Địa lý Quốc gia)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_territory
+(
+    territory_id Int64,
+    country_code String,
+    country_name Nullable(String),
+    alpha_2 Nullable(String),
+    alpha_3 Nullable(String),
+    region Nullable(String),
+    sub_region Nullable(String),
     intermediate_region Nullable(String)
 )
 ENGINE = MergeTree()
-ORDER BY territory_id
-COMMENT 'Dimension địa lý. territory_id=-1 đại diện glamira.com (global) và URL không xác định';
- 
- 
--- ------------------------------------------------------------
--- 3. dim_product
--- Chỉ product_id + product_name, đẩy thẳng từ stg_product
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS glamira_dw.dim_product (
-    product_id   Int64,           -- PK
+ORDER BY territory_id;
+
+-- 3. Bảng dim_product (Chiều thông tin Sản phẩm)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_product
+(
+    product_id Int64,
     product_name Nullable(String)
 )
 ENGINE = MergeTree()
-ORDER BY product_id
-COMMENT 'Dimension sản phẩm, nguồn từ stg_product';
- 
- 
--- ------------------------------------------------------------
--- 4. dim_device
--- OS và browser giữ trong cùng bảng, không tách riêng
--- ReplacingMergeTree tự deduplicate theo device_id
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS glamira_dw.dim_device (
-    device_id    String,           -- PK
-    user_agent   Nullable(String),
-    os           Nullable(String), -- Windows, iOS, Android, Mac OS X...
-    browser      Nullable(String), -- Chrome, Safari, Firefox...
-    device_type  Nullable(String), -- Mobile / Tablet / Desktop
-    resolution   Nullable(String)  -- raw: '375x667'
+ORDER BY product_id;
+
+-- 4. Bảng dim_device (Chiều thông tin Thiết bị & Trình duyệt)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_device
+(
+    device_id String,
+    user_agent Nullable(String),
+    os Nullable(String),
+    browser Nullable(String),
+    device_type Nullable(String),
+    resolution Nullable(String)
 )
 ENGINE = ReplacingMergeTree()
-ORDER BY device_id
-COMMENT 'Dimension thiết bị, OS và browser parse từ user_agent';
+ORDER BY device_id;
 
--- ------------------------------------------------------------
--- 5. dim_material
--- Gộp alloy và diamond chung 1 bảng vì cùng cấu trúc
--- material_id = abs(hash(value_label)) — join từ fact
--- Nguồn: option_json và cart_products_json từ stg_events
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS glamira_dw.dim_material (
-    material_id   Int64,   -- abs(hash(value_label)), PK
-    material_type String,  -- 'alloy' hoặc 'diamond'
-    value_label   String   -- 'Gelbgold 585', 'White Sapphire'...
+-- 5. Bảng dim_material (Chiều thông tin Nguyên liệu Trang sức cao cấp)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_material
+(
+    material_id Int64,
+    material_type String,
+    value_label String
 )
 ENGINE = MergeTree()
-ORDER BY (material_type, material_id)
-COMMENT 'Dimension nguyên liệu trang sức, gộp alloy và diamond, join qua material_id = abs(hash(value_label))';
- 
+ORDER BY material_id;
+
+-- 6. Bảng dim_currency (Bảng quy đổi Tỷ giá tiền tệ Quốc tế)
+CREATE TABLE IF NOT EXISTS glamira_dw.dim_currency
+(
+    currency_id Int64,
+    currency_code String,
+    usd_conversion_rate Nullable(Float64)
+)
+ENGINE = MergeTree()
+ORDER BY currency_id;
+
+DROP TABLE IF EXISTS glamira_dw.dim_ip;
+CREATE TABLE glamira_dw.dim_ip (
+    ip_id Int64,
+    ip String,
+    
+    -- 1. Trục Châu lục (Mới bổ sung)
+    continent_code String,                  -- Ví dụ: AS, EU, NA
+    continent_name String,                  -- Ví dụ: Asia, Europe, North America
+    
+    -- 2. Trục Quốc gia
+    country_code String,                    -- Ví dụ: VN, US
+    country_name String,                    -- Ví dụ: Vietnam, United States
+    
+    -- 3. Các chi tiết địa lý nâng cao (Để Nullable theo đúng thiết kế Spark của bạn)
+    region_name Nullable(String),           -- Tỉnh/Thành phố trực thuộc
+    city_name Nullable(String),             -- Quận/Huyện/Thị xã
+    latitude Nullable(String),              -- Vĩ độ
+    longitude Nullable(String),             -- Kinh độ
+    zip_code Nullable(String),              -- Mã bưu chính
+    time_zone Nullable(String)              -- Múi giờ (Ví dụ: Asia/Ho_Chi_Minh)
+) ENGINE = MergeTree()
+ORDER BY ip_id;
+
+-- ============================================================================
+-- B. KHỐI BẢNG SỰ KIỆN CỐT LÕI (FACT TABLES)
+-- ============================================================================
+
+-- 1. Bảng fact_order (Báo cáo Doanh thu - Đơn hàng Chi tiết)
+CREATE TABLE IF NOT EXISTS glamira_dw.fact_order
+(
+    event_id String,
+    order_id String,
+    date_id Int64,
+    ip_id Int64,             -- Khóa ngoại liên kết trực tiếp với dim_ip
+    territory_id Int64,      -- Có thể giữ lại nếu bạn vẫn dùng, hoặc xóa bỏ nếu bỏ hẳn stg_country
+    device_id String,
+    product_id Int64,
+    currency_id Int64,
+    alloy_id Int64,
+    diamond_id Int64,
+    user_id_db Nullable(Int64),
+    show_recommendation UInt8,
+    amount Int32,
+    price_local Float64,
+    price_usd Nullable(Float64)
+)
+ENGINE = MergeTree()
+ORDER BY (date_id, ip_id, product_id); -- Đổi khóa sắp xếp từ territory_id sang ip_id để tối ưu index
+
+
+-- ============================================================
+-- 2. Bảng fact_events (Đã thêm ip_id, ENGINE và ORDER BY hoàn chỉnh)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS glamira_dw.fact_events
+(
+    event_id String,
+    collection String,
+    date_id Int64,
+    ip_id Int64,             -- Khóa ngoại liên kết trực tiếp với dim_ip
+    territory_id Int64,      -- Có thể giữ lại hoặc bỏ tùy thuộc kiến trúc của bạn
+    device_id String,
+    store_id String,
+    user_id_db Nullable(String),
+    product_id Int64,
+    current_url String,
+    utm_source String,
+    utm_medium String,
+    event_count Int32
+)
+ENGINE = MergeTree()
+ORDER BY (date_id, ip_id, product_id); -- Bổ sung cấu hình MergeTree hoàn chỉnh cho bảng events

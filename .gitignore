@@ -5,6 +5,10 @@ grafana/data/
 mongodb/data/
 postgres_dw/data/
 airflow/postgres_data/
+metabase/data/          # 🔥 Thêm dòng này để bỏ qua toàn bộ DB ngầm của Metabase
+
+# Khóa file nhị phân IP2Location lớn (Tránh đẩy lên Github gây tràn dung lượng)
+airflow/dags/spark/warehouse/data/*.BIN
 
 # Python cache
 __pycache__/

@@ -88,48 +88,48 @@ def main():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
 
-    # --------------------------------------------------------
-    # XỬ LÝ BẢNG 1: COUNTRY
-    # --------------------------------------------------------
-    print("\n--- [PROCESS] Xử lý dữ liệu COUNTRY ---")
-    df_country_raw = spark.read.format("mongodb") \
-        .option("spark.mongodb.read.connection.uri", MONGO_URI) \
-        .option("collection", "countries") \
-        .schema(COUNTRY_RAW_SCHEMA).load()
+    # # --------------------------------------------------------
+    # # XỬ LÝ BẢNG 1: COUNTRY
+    # # --------------------------------------------------------
+    # print("\n--- [PROCESS] Xử lý dữ liệu COUNTRY ---")
+    # df_country_raw = spark.read.format("mongodb") \
+    #     .option("spark.mongodb.read.connection.uri", MONGO_URI) \
+    #     .option("collection", "countries") \
+    #     .schema(COUNTRY_RAW_SCHEMA).load()
 
-    df_country_clean = df_country_raw \
-        .withColumnRenamed("alpha-2", "alpha_2") \
-        .withColumnRenamed("alpha-3", "alpha_3") \
-        .withColumnRenamed("country-code", "country_code") \
-        .withColumnRenamed("iso_3166-2", "iso_3166_2") \
-        .withColumnRenamed("sub-region", "sub_region") \
-        .withColumnRenamed("intermediate-region", "intermediate_region") \
-        .withColumnRenamed("region-code", "region_code") \
-        .withColumnRenamed("sub-region-code", "sub_region_code") \
-        .withColumnRenamed("intermediate-region-code", "intermediate_region_code")
+    # df_country_clean = df_country_raw \
+    #     .withColumnRenamed("alpha-2", "alpha_2") \
+    #     .withColumnRenamed("alpha-3", "alpha_3") \
+    #     .withColumnRenamed("country-code", "country_code") \
+    #     .withColumnRenamed("iso_3166-2", "iso_3166_2") \
+    #     .withColumnRenamed("sub-region", "sub_region") \
+    #     .withColumnRenamed("intermediate-region", "intermediate_region") \
+    #     .withColumnRenamed("region-code", "region_code") \
+    #     .withColumnRenamed("sub-region-code", "sub_region_code") \
+    #     .withColumnRenamed("intermediate-region-code", "intermediate_region_code")
 
-    write_to_clickhouse(df_country_clean, "stg_country")
-    print("✅ Đã đồng bộ xong bảng COUNTRY.")
+    # write_to_clickhouse(df_country_clean, "stg_country")
+    # print("✅ Đã đồng bộ xong bảng COUNTRY.")
 
-    # --------------------------------------------------------
-    # XỬ LÝ BẢNG 2: PRODUCTS
-    # --------------------------------------------------------
-    print("\n--- [PROCESS] Xử lý dữ liệu PRODUCTS ---")
-    df_products_raw = spark.read.format("mongodb") \
-        .option("spark.mongodb.read.connection.uri", MONGO_URI) \
-        .option("collection", "products") \
-        .schema(PRODUCTS_RAW_SCHEMA).load()
+    # # --------------------------------------------------------
+    # # XỬ LÝ BẢNG 2: PRODUCTS
+    # # --------------------------------------------------------
+    # print("\n--- [PROCESS] Xử lý dữ liệu PRODUCTS ---")
+    # df_products_raw = spark.read.format("mongodb") \
+    #     .option("spark.mongodb.read.connection.uri", MONGO_URI) \
+    #     .option("collection", "products") \
+    #     .schema(PRODUCTS_RAW_SCHEMA).load()
 
-    df_products_clean = df_products_raw \
-        .withColumn("product_id", F.col("_id").cast(IntegerType())) \
-        .filter(F.col("product_id").isNotNull()) \
-        .select(
-            "product_id",
-            F.coalesce(F.nullif(F.trim(F.col("product_name")), F.lit("")), F.lit("UNKNOWN")).alias("product_name")
-        )
+    # df_products_clean = df_products_raw \
+    #     .withColumn("product_id", F.col("_id").cast(IntegerType())) \
+    #     .filter(F.col("product_id").isNotNull()) \
+    #     .select(
+    #         "product_id",
+    #         F.coalesce(F.nullif(F.trim(F.col("product_name")), F.lit("")), F.lit("UNKNOWN")).alias("product_name")
+    #     )
 
-    write_to_clickhouse(df_products_clean, "stg_products")
-    print("✅ Đã đồng bộ xong bảng PRODUCTS.")
+    # write_to_clickhouse(df_products_clean, "stg_products")
+    # print("✅ Đã đồng bộ xong bảng PRODUCTS.")
 
     # --------------------------------------------------------
     # XỬ LÝ BẢNG 3: IP (GEOIP) - MỚI THÊM VÀO
