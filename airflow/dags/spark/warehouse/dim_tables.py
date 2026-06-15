@@ -472,8 +472,8 @@ def main():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
 
-    # write_ch(build_dim_date(spark),      "dim_date")
-    write_ch(build_dim_territory(spark), "dim_territory")
+    write_ch(build_dim_date(spark),      "dim_date")
+    # write_ch(build_dim_territory(spark), "dim_territory")
     # write_ch(build_dim_product(spark),   "dim_product")
     # write_ch(build_dim_device(spark),    "dim_device")
     # write_ch(build_dim_material(spark),  "dim_material")

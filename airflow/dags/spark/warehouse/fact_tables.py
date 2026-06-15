@@ -261,7 +261,7 @@ def build_fact_order(spark, stg_events_df):
         .withColumn("user_id_db", col("user_id_db").cast(LongType()))
 
         # --- Khóa thời gian thô ---
-        .withColumn("_chosen_time", coalesce(col("local_time"), col("event_time")))
+        .withColumn("_chosen_time", coalesce(col("event_time"), col("event_time")))
         .withColumn("date_id_raw", 
             when(col("_chosen_time").isNull(), lit(-1).cast(LongType()))
             .otherwise(date_format(col("_chosen_time"), "HHddMMyyyy").cast(LongType()))
@@ -371,7 +371,7 @@ def build_fact_events(spark, stg_events_df):
         .withColumn("user_id_db", when(trim(col("user_id_db")) == "", lit(None)).otherwise(col("user_id_db")).cast(LongType()))
         
         # --- Khóa thời gian thô ---
-        .withColumn("_time_col", coalesce(col("local_time"), col("event_time")))
+        .withColumn("_time_col", coalesce(col("event_time"), col("event_time")))
         .withColumn("date_id_raw", 
             when(col("_time_col").isNull(), lit(-1).cast(LongType()))
             .otherwise(date_format(col("_time_col"), "HHddMMyyyy").cast(LongType()))
@@ -448,15 +448,15 @@ def main():
         stg_events_df = read_ch(spark, CLICKHOUSE_STG, "stg_events")
         
         # [1] Đồng bộ động tầng Dimension IP (Tự trích xuất IP mới từ dữ liệu thô và nạp vào DW)
-        sync_dim_ip_from_events(spark, stg_events_df)
+        # sync_dim_ip_from_events(spark, stg_events_df)
         
         # [2] Thực thi xử lý và ghi dữ liệu bảng Fact Order
-        # fact_order_df = build_fact_order(spark, stg_events_df)
-        # write_ch_fact(fact_order_df, "fact_order", order_by_cols="date_id, ip_id, product_id")
+        fact_order_df = build_fact_order(spark, stg_events_df)
+        write_ch_fact(fact_order_df, "fact_order", order_by_cols="date_id, ip_id, product_id")
         
         # [3] Thực thi xử lý và ghi dữ liệu bảng Fact Events (Gỡ comment để chạy đồng thời)
-        # fact_events_df = build_fact_events(spark, stg_events_df)
-        # write_ch_fact(fact_events_df, "fact_events", order_by_cols="date_id, ip_id, product_id")
+        fact_events_df = build_fact_events(spark, stg_events_df)
+        write_ch_fact(fact_events_df, "fact_events", order_by_cols="date_id, ip_id, product_id")
 
         print("\n[THÀNH CÔNG RỰC RỠ] Quy trình nạp Fact và đồng bộ tự động Dim IP hoàn tất.")
         

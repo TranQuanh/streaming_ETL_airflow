@@ -8,13 +8,21 @@ USE glamira_dw;
 TRUNCATE TABLE glamira_dw.dim_territory
 TRUNCATE TABLE glamira_dw.dim_ip
 TRUNCATE TABLE glamira_dw.fact_order
+TRUNCATE TABLE glamira_dw.fact_events
 	select * from glamira_dw.dim_currency
 select * from glamira_dw.fact_events
 select * from glamira_stg.stg_events where event_id = '5e857b5f5d4dd036fab55dc7';
+select count(*) from  glamira_dw.fact_order
 -- ============================================================================
 -- A. KHỐI BẢNG CHIỀU THÔNG TIN (DIMENSION TABLES)
 -- ============================================================================
-
+SELECT 
+    toHour(toDateTime(event_time)) AS hour_stg,
+    COUNT() AS total_rows
+FROM glamira_stg.stg_events
+WHERE hour_stg BETWEEN 6 AND 16
+GROUP BY hour_stg
+ORDER BY hour_stg ASC;
 -- 1. Bảng dim_date (Trục Thời gian Phân tích)
 CREATE TABLE IF NOT EXISTS glamira_dw.dim_date
 (
@@ -92,10 +100,7 @@ CREATE TABLE glamira_dw.dim_ip (
     ip_id Int64,
     ip String,
     
-    -- 1. Trục Châu lục (Mới bổ sung)
-    continent_code String,                  -- Ví dụ: AS, EU, NA
-    continent_name String,                  -- Ví dụ: Asia, Europe, North America
-    
+
     -- 2. Trục Quốc gia
     country_code String,                    -- Ví dụ: VN, US
     country_name String,                    -- Ví dụ: Vietnam, United States
